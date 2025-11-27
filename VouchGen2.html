@@ -78,6 +78,7 @@
             </div>
             
             <div class="flex flex-wrap items-center justify-center gap-3">
+                <!-- Brand Selector -->
                 <div class="relative">
                     <select id="brand-selector" class="appearance-none bg-white text-gray-800 font-semibold py-2 pl-4 pr-10 rounded-full cursor-pointer focus:outline-none focus:ring-2 focus:ring-white/50 shadow-sm">
                         <option value="tng">Touch 'n Go</option>
@@ -92,6 +93,18 @@
 
                 <div class="h-6 w-px bg-white/30 hidden md:block"></div>
 
+                <!-- Grouping Toggle -->
+                <label class="flex items-center gap-2 cursor-pointer bg-black/20 hover:bg-black/30 border border-white/20 px-3 py-2 rounded-full transition-all select-none active:scale-95">
+                    <input type="checkbox" id="group-toggle" class="hidden peer">
+                    <span class="text-sm font-semibold text-white">Group by Value</span>
+                    <div class="w-8 h-4 bg-gray-400 rounded-full peer-checked:bg-green-400 relative transition-colors">
+                        <div class="absolute left-0.5 top-0.5 w-3 h-3 bg-white rounded-full transition-transform peer-checked:translate-x-4"></div>
+                    </div>
+                </label>
+
+                <div class="h-6 w-px bg-white/30 hidden md:block"></div>
+
+                <!-- Upload Button -->
                 <input type="file" id="file-input" accept=".pdf" class="hidden" />
                 <button id="upload-btn" class="bg-black/20 hover:bg-black/30 text-white border border-white/20 px-4 py-2 rounded-full font-semibold flex items-center gap-2 transition-all shadow-sm active:scale-95">
                     <i data-lucide="upload" class="w-5 h-5 icon-upload"></i>
@@ -99,6 +112,7 @@
                     <span id="upload-text">Upload PDF</span>
                 </button>
 
+                <!-- Download Button -->
                 <button id="download-btn" class="relative z-50 cursor-pointer bg-white px-6 py-2 rounded-full font-semibold flex items-center gap-2 transition-all shadow-sm hover:bg-gray-50 active:scale-95">
                     <i data-lucide="file-down" class="w-5 h-5 icon-download"></i>
                     <i data-lucide="loader" class="w-5 h-5 hidden icon-loading animate-spin"></i>
@@ -115,7 +129,9 @@
             <p class="text-xl font-semibold">No coupons loaded</p>
             <p class="text-sm">Upload a PDF file to generate vouchers</p>
         </div>
-        <div id="coupons-grid" class="grid grid-cols-1 lg:grid-cols-2 gap-6"></div>
+        
+        <!-- Grid Container -->
+        <div id="coupons-grid"></div>
     </div>
 
     <!-- 1. Redeem Preview Modal -->
@@ -213,6 +229,7 @@
 
         let currentBrandId = 'tng';
         let isProcessing = false;
+        let isGrouped = false; // Toggle state
         let currentRedeemIndex = null;
         let currentUndoIndex = null;
 
@@ -221,6 +238,7 @@
         const headerTitle = document.getElementById('header-title');
         const headerIcon = document.getElementById('header-icon');
         const brandSelector = document.getElementById('brand-selector');
+        const groupToggle = document.getElementById('group-toggle'); // New Toggle
         const couponsGrid = document.getElementById('coupons-grid');
         const couponCountEl = document.getElementById('coupon-count');
         const emptyState = document.getElementById('empty-state');
@@ -228,7 +246,7 @@
         const uploadBtn = document.getElementById('upload-btn');
         const downloadBtn = document.getElementById('download-btn');
         
-        // Modal & Toast
+        // Modal & Toast elements...
         const modal = document.getElementById('redeem-modal');
         const confirmModal = document.getElementById('confirm-modal');
         const modalEmailInput = document.getElementById('redeem-email');
@@ -236,11 +254,10 @@
         const modalSubjectInput = document.getElementById('redeem-subject');
         const modalBodyInput = document.getElementById('redeem-body');
         const modalCancelBtn = document.getElementById('redeem-cancel');
-        const modalConfirmGmailBtn = document.getElementById('redeem-confirm-gmail'); // Now an <a> tag
-        const modalConfirmDefaultBtn = document.getElementById('redeem-confirm-default'); // Now an <a> tag
+        const modalConfirmGmailBtn = document.getElementById('redeem-confirm-gmail'); 
+        const modalConfirmDefaultBtn = document.getElementById('redeem-confirm-default'); 
         const modalCopyBtn = document.getElementById('redeem-copy-btn');
         const modalCloseX = document.getElementById('modal-close-x');
-        
         const confirmCancelBtn = document.getElementById('confirm-cancel');
         const confirmYesBtn = document.getElementById('confirm-yes');
         const toastContainer = document.getElementById('toast-container');
@@ -258,29 +275,33 @@
                 updateBrandTheme();
                 renderCoupons();
             });
+
+            // Grouping Toggle Listener
+            groupToggle.addEventListener('change', (e) => {
+                isGrouped = e.target.checked;
+                renderCoupons();
+            });
+
             uploadBtn.addEventListener('click', () => { if (!isProcessing) fileInput.click(); });
             fileInput.addEventListener('change', handleFileUpload);
             downloadBtn.addEventListener('click', handleDownloadPDF);
 
-            // Redeem Modal
+            // Modal Listeners
             modalCancelBtn.addEventListener('click', closeRedeemModal);
             modalCloseX.addEventListener('click', closeRedeemModal);
+            modalConfirmGmailBtn.addEventListener('click', () => completeRedemption('Gmail'));
+            modalConfirmDefaultBtn.addEventListener('click', () => completeRedemption('Mail App'));
             modalCopyBtn.addEventListener('click', copyModalBody);
-
-            // Add input listeners to update links in real-time
+            
             [modalEmailInput, modalSenderInput, modalSubjectInput, modalBodyInput].forEach(input => {
                 input.addEventListener('input', updateRedeemLinks);
             });
 
-            // Handle actual clicks on the links to close modal/update state
-            modalConfirmGmailBtn.addEventListener('click', () => completeRedemption('Gmail'));
-            modalConfirmDefaultBtn.addEventListener('click', () => completeRedemption('Mail App'));
-
-            // Confirm Modal
             confirmCancelBtn.addEventListener('click', closeConfirmModal);
             confirmYesBtn.addEventListener('click', executeUndo);
         }
 
+        // ... [Helper functions like updateBrandTheme, formatPin, copyToClipboard remain same] ...
         function updateBrandTheme() {
             const brand = brandConfig[currentBrandId];
             header.style.backgroundColor = brand.color;
@@ -328,106 +349,10 @@
             }, 3000);
         }
 
-        // --- Button Click Handling ---
-        window.handleRedeemClick = function(index) {
-            if (coupons[index].redeemed) {
-                currentUndoIndex = index;
-                confirmModal.classList.remove('hidden');
-            } else {
-                openRedeemModal(index);
-            }
-        }
-
-        // --- Undo Logic ---
-        function closeConfirmModal() {
-            confirmModal.classList.add('hidden');
-            currentUndoIndex = null;
-        }
-
-        function executeUndo() {
-            if (currentUndoIndex !== null) {
-                coupons[currentUndoIndex].redeemed = false;
-                renderCoupons();
-                showToast("Voucher marked as available", "success");
-            }
-            closeConfirmModal();
-        }
-
-        // --- Redeem Logic ---
-        function openRedeemModal(index) {
-            currentRedeemIndex = index;
-            const coupon = coupons[index];
+        // --- Card HTML Generator ---
+        function generateCardHTML(coupon, idx) {
             const brand = brandConfig[currentBrandId];
-            modalEmailInput.value = "";
-            modalSenderInput.value = "";
-            modalSubjectInput.value = `${brand.name} Voucher - ${coupon.currency} ${coupon.amount}`;
-            const bodyText = `Here is your ${brand.name} Voucher:\n\nAmount: ${coupon.currency} ${coupon.amount}\nSerial Number: ${coupon.serial}\nValid Until: ${coupon.validity}\n\nRedemption PIN: ${formatPin(coupon.pin)}\n\nRedeem here: ${coupon.link}`;
-            modalBodyInput.value = bodyText;
-            
-            // Force update links initially
-            updateRedeemLinks();
-
-            modal.classList.remove('hidden');
-            setTimeout(() => modalEmailInput.focus(), 50);
-        }
-
-        function updateRedeemLinks() {
-            const email = modalEmailInput.value.trim();
-            const senderName = modalSenderInput.value.trim();
-            const subject = modalSubjectInput.value;
-            let body = modalBodyInput.value;
-
-            if (senderName) body += `\n\nSent by: ${senderName}`;
-
-            const gmailBase = "https://mail.google.com/mail/?view=cm&fs=1";
-            const gmailLink = `${gmailBase}&to=${encodeURIComponent(email)}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-            const mailtoLink = `mailto:${email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-
-            modalConfirmGmailBtn.href = gmailLink;
-            modalConfirmDefaultBtn.href = mailtoLink;
-        }
-
-        function completeRedemption(methodName) {
-            if (currentRedeemIndex !== null) {
-                coupons[currentRedeemIndex].redeemed = true;
-                renderCoupons();
-                showToast(`Opening ${methodName}...`, "info");
-            }
-            closeRedeemModal();
-        }
-
-        function closeRedeemModal() {
-            modal.classList.add('hidden');
-            currentRedeemIndex = null;
-        }
-
-        function copyModalBody() {
-            const text = modalBodyInput.value;
-            const textArea = document.createElement("textarea");
-            textArea.value = text;
-            document.body.appendChild(textArea);
-            textArea.select();
-            try {
-                document.execCommand('copy');
-                modalCopyBtn.innerHTML = '<i data-lucide="check" class="w-4 h-4 text-green-600"></i>';
-                lucide.createIcons();
-                showToast("Message copied!", "success");
-                setTimeout(() => { modalCopyBtn.innerHTML = '<i data-lucide="copy" class="w-4 h-4"></i>'; lucide.createIcons(); }, 2000);
-            } catch (err) { }
-            document.body.removeChild(textArea);
-        }
-
-        function renderCoupons() {
-            const brand = brandConfig[currentBrandId];
-            couponCountEl.textContent = coupons.length;
-            if (coupons.length === 0) {
-                couponsGrid.innerHTML = '';
-                emptyState.classList.remove('hidden');
-                return;
-            }
-            emptyState.classList.add('hidden');
-            
-            couponsGrid.innerHTML = coupons.map((coupon, idx) => `
+            return `
                 <div class="bg-white border border-gray-200 rounded-xl shadow-sm hover:shadow-md transition-shadow overflow-hidden flex flex-col md:flex-row h-auto w-full coupon-card ${coupon.redeemed ? 'opacity-75 grayscale-[0.5]' : ''}">
                     <!-- Header -->
                     <div style="background-color: ${coupon.redeemed ? '#6b7280' : brand.color}" class="p-3 text-white flex justify-between items-center md:w-16 md:flex-col md:justify-center md:items-center transition-colors duration-500 relative overflow-hidden">
@@ -456,14 +381,12 @@
                                     </div>
                                 </div>
                             </div>
-                            <!-- Redeem Button -->
                             <div class="mt-4 pt-4 border-t border-gray-100 redeem-controls">
                                 <button type="button" onclick="handleRedeemClick(${idx})" style="${coupon.redeemed ? '' : `background-color: ${brand.color}; border-color: ${brand.color};`}" class="w-full py-2 px-4 rounded-lg font-semibold flex items-center justify-center gap-2 transition-all cursor-pointer ${coupon.redeemed ? 'bg-gray-100 text-gray-500 hover:bg-gray-200 border border-gray-300' : 'text-white shadow-sm hover:opacity-90 active:scale-95 border'}" title="${coupon.redeemed ? 'Click to Undo' : 'Redeem Coupon'}">
                                     ${coupon.redeemed ? '<i data-lucide="rotate-ccw" class="w-4 h-4"></i> Redeemed (Undo?)' : '<i data-lucide="send" class="w-4 h-4"></i> Redeem'}
                                 </button>
                             </div>
                         </div>
-                        <!-- QR Code -->
                         <div class="mt-4 pt-4 border-t border-dashed border-gray-200 flex flex-col items-center justify-center md:mt-0 md:pt-0 md:border-t-0 md:border-l md:pl-6 md:w-56">
                             <div class="bg-white p-2 rounded-lg border border-gray-100 mb-2 relative">
                                 <img crossorigin="anonymous" src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(coupon.link)}&color=${brand.color.replace('#', '')}&format=png" alt="Scan to Redeem" class="w-32 h-32 object-contain ${coupon.redeemed ? 'opacity-50' : ''}" />
@@ -474,8 +397,125 @@
                         </div>
                     </div>
                 </div>
-            `).join('');
+            `;
+        }
+
+        function renderCoupons() {
+            const brand = brandConfig[currentBrandId];
+            couponCountEl.textContent = coupons.length;
+
+            if (coupons.length === 0) {
+                couponsGrid.innerHTML = '';
+                emptyState.classList.remove('hidden');
+                return;
+            }
+
+            emptyState.classList.add('hidden');
+            
+            if (isGrouped) {
+                // Grouping Logic
+                couponsGrid.className = 'space-y-12'; // Vertical stack for sections
+                
+                const grouped = coupons.reduce((acc, coupon, index) => {
+                    const amt = parseFloat(coupon.amount) || 0;
+                    if (!acc[amt]) acc[amt] = [];
+                    acc[amt].push({ ...coupon, originalIndex: index }); // Keep original index for actions
+                    return acc;
+                }, {});
+
+                const sortedAmounts = Object.keys(grouped).sort((a, b) => a - b);
+
+                couponsGrid.innerHTML = sortedAmounts.map(amt => {
+                    const groupCoupons = grouped[amt];
+                    const cardsHtml = groupCoupons.map(c => generateCardHTML(c, c.originalIndex)).join('');
+                    
+                    return `
+                        <div class="break-inside-avoid">
+                            <h2 class="text-2xl font-bold text-gray-800 mb-6 pb-2 border-b border-gray-200 flex items-center gap-2">
+                                <span class="text-3xl">${groupCoupons[0].currency} ${amt}</span>
+                                <span class="bg-gray-100 text-gray-600 text-sm font-medium px-3 py-1 rounded-full">${groupCoupons.length} vouchers</span>
+                            </h2>
+                            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                ${cardsHtml}
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+
+            } else {
+                // Flat List Logic
+                couponsGrid.className = 'grid grid-cols-1 lg:grid-cols-2 gap-6';
+                couponsGrid.innerHTML = coupons.map((c, i) => generateCardHTML(c, i)).join('');
+            }
+
             lucide.createIcons();
+        }
+
+        // ... [Modal Logic & File Parsing logic unchanged from previous steps] ...
+        
+        window.handleRedeemClick = function(index) {
+            if (coupons[index].redeemed) {
+                currentUndoIndex = index;
+                confirmModal.classList.remove('hidden');
+            } else {
+                openRedeemModal(index);
+            }
+        }
+
+        // --- Undo Logic ---
+        function closeConfirmModal() { confirmModal.classList.add('hidden'); currentUndoIndex = null; }
+        function executeUndo() {
+            if (currentUndoIndex !== null) {
+                coupons[currentUndoIndex].redeemed = false;
+                renderCoupons();
+                showToast("Voucher marked as available", "success");
+            }
+            closeConfirmModal();
+        }
+
+        // --- Redeem Logic ---
+        function openRedeemModal(index) {
+            currentRedeemIndex = index;
+            const coupon = coupons[index];
+            const brand = brandConfig[currentBrandId];
+            modalEmailInput.value = "";
+            modalSenderInput.value = "";
+            modalSubjectInput.value = `${brand.name} Voucher - ${coupon.currency} ${coupon.amount}`;
+            const bodyText = `Here is your ${brand.name} Voucher:\n\nAmount: ${coupon.currency} ${coupon.amount}\nSerial Number: ${coupon.serial}\nValid Until: ${coupon.validity}\n\nRedemption PIN: ${formatPin(coupon.pin)}\n\nRedeem here: ${coupon.link}`;
+            modalBodyInput.value = bodyText;
+            updateRedeemLinks();
+            modal.classList.remove('hidden');
+            setTimeout(() => modalEmailInput.focus(), 50);
+        }
+
+        function updateRedeemLinks() {
+            const email = modalEmailInput.value.trim();
+            const senderName = modalSenderInput.value.trim();
+            const subject = modalSubjectInput.value;
+            let body = modalBodyInput.value;
+            if (senderName) body += `\n\nSent by: ${senderName}`;
+            const gmailBase = "https://mail.google.com/mail/?view=cm&fs=1";
+            const gmailLink = `${gmailBase}&to=${encodeURIComponent(email)}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+            const mailtoLink = `mailto:${email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+            modalConfirmGmailBtn.href = gmailLink;
+            modalConfirmDefaultBtn.href = mailtoLink;
+        }
+
+        function completeRedemption(methodName) {
+            if (currentRedeemIndex !== null) {
+                coupons[currentRedeemIndex].redeemed = true;
+                renderCoupons();
+                showToast(`Opening ${methodName}...`, "info");
+            }
+            closeRedeemModal();
+        }
+
+        function closeRedeemModal() { modal.classList.add('hidden'); currentRedeemIndex = null; }
+        function copyModalBody() {
+            const text = modalBodyInput.value;
+            const textArea = document.createElement("textarea"); textArea.value = text; document.body.appendChild(textArea); textArea.select();
+            try { document.execCommand('copy'); modalCopyBtn.innerHTML = '<i data-lucide="check" class="w-4 h-4 text-green-600"></i>'; lucide.createIcons(); showToast("Message copied!", "success"); setTimeout(() => { modalCopyBtn.innerHTML = '<i data-lucide="copy" class="w-4 h-4"></i>'; lucide.createIcons(); }, 2000); } catch (err) { }
+            document.body.removeChild(textArea);
         }
 
         async function handleFileUpload(event) {
@@ -528,7 +568,11 @@
             let currentY = margin;
             document.querySelectorAll('.redeem-controls').forEach(btn => btn.style.display = 'none');
             document.querySelectorAll('.open-link-control').forEach(link => link.style.display = 'none');
-            const couponElements = couponsGrid.children;
+            
+            // Get all cards regardless of structure (handles grouped view automatically)
+            const couponElements = document.querySelectorAll('.coupon-card');
+            const brand = brandConfig[currentBrandId];
+
             try {
                 for (let i = 0; i < couponElements.length; i++) {
                     const canvas = await html2canvas(couponElements[i], { scale: 2, useCORS: true, logging: false, backgroundColor: '#ffffff', windowWidth: 1280 });
@@ -544,7 +588,7 @@
                     updateProgress(Math.round(((i + 1) / couponElements.length) * 100));
                     await new Promise(r => setTimeout(r, 10));
                 }
-                doc.save(`${brandConfig[currentBrandId].name}-Vouchers.pdf`);
+                doc.save(`${brand.name}-Vouchers.pdf`);
                 showToast("PDF Downloaded!", 'success');
             } catch (error) { console.error(error); alert("PDF Generation Failed"); }
             finally {
