@@ -1,0 +1,576 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Coupon Generator</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    
+    <!-- PDF Libraries -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+
+    <style>
+        /* Custom styles for print and transitions */
+        @media print {
+            @page { margin: 0.5cm; size: auto; }
+            body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            /* Hide non-printable elements */
+            #header, #redeem-controls, #redeem-modal, #confirm-modal, #toast-container { display: none !important; }
+            .redeem-btn { display: none !important; }
+            .open-link-control { display: none !important; }
+        }
+        .coupon-card {
+            break-inside: avoid;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        .animate-spin {
+            animation: spin 1s linear infinite;
+        }
+        .toast-enter {
+            transform: translateY(100%);
+            opacity: 0;
+        }
+        .toast-enter-active {
+            transform: translateY(0);
+            opacity: 1;
+            transition: all 300ms ease-out;
+        }
+        .toast-exit {
+            transform: translateY(0);
+            opacity: 1;
+        }
+        .toast-exit-active {
+            transform: translateY(100%);
+            opacity: 0;
+            transition: all 300ms ease-in;
+        }
+    </style>
+</head>
+<body class="min-h-screen bg-gray-50 pb-12 transition-colors duration-500" id="main-body">
+
+    <!-- PDF Worker Configuration -->
+    <script>
+        if (typeof pdfjsLib !== 'undefined') {
+            pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+        }
+    </script>
+
+    <!-- Header -->
+    <div id="header" class="text-white p-6 shadow-md sticky top-0 z-50 transition-colors duration-500">
+        <div class="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
+            <div>
+                <h1 class="text-2xl font-bold flex items-center gap-2">
+                    <i id="header-icon" data-lucide="credit-card" class="w-8 h-8"></i>
+                    <span id="header-title">Touch 'n Go Generator</span>
+                </h1>
+                <p class="text-white/90 mt-1 opacity-90">
+                    <span id="coupon-count">0</span> vouchers loaded
+                </p>
+            </div>
+            
+            <div class="flex flex-wrap items-center justify-center gap-3">
+                <div class="relative">
+                    <select id="brand-selector" class="appearance-none bg-white text-gray-800 font-semibold py-2 pl-4 pr-10 rounded-full cursor-pointer focus:outline-none focus:ring-2 focus:ring-white/50 shadow-sm">
+                        <option value="tng">Touch 'n Go</option>
+                        <option value="shopee">Shopee</option>
+                        <option value="lazada">Lazada</option>
+                        <option value="zus">Zus Coffee</option>
+                    </select>
+                    <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-800">
+                        <svg class="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/></svg>
+                    </div>
+                </div>
+
+                <div class="h-6 w-px bg-white/30 hidden md:block"></div>
+
+                <input type="file" id="file-input" accept=".pdf" class="hidden" />
+                <button id="upload-btn" class="bg-black/20 hover:bg-black/30 text-white border border-white/20 px-4 py-2 rounded-full font-semibold flex items-center gap-2 transition-all shadow-sm active:scale-95">
+                    <i data-lucide="upload" class="w-5 h-5 icon-upload"></i>
+                    <i data-lucide="loader" class="w-5 h-5 hidden icon-loading animate-spin"></i>
+                    <span id="upload-text">Upload PDF</span>
+                </button>
+
+                <button id="download-btn" class="relative z-50 cursor-pointer bg-white px-6 py-2 rounded-full font-semibold flex items-center gap-2 transition-all shadow-sm hover:bg-gray-50 active:scale-95">
+                    <i data-lucide="file-down" class="w-5 h-5 icon-download"></i>
+                    <i data-lucide="loader" class="w-5 h-5 hidden icon-loading animate-spin"></i>
+                    <span id="download-text">Download PDF</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Grid -->
+    <div class="max-w-7xl mx-auto p-4 md:p-8">
+        <div id="empty-state" class="hidden text-center py-20 text-gray-400 border-2 border-dashed border-gray-300 rounded-xl">
+            <i data-lucide="file-text" class="w-16 h-16 mx-auto mb-4 opacity-50"></i>
+            <p class="text-xl font-semibold">No coupons loaded</p>
+            <p class="text-sm">Upload a PDF file to generate vouchers</p>
+        </div>
+        <div id="coupons-grid" class="grid grid-cols-1 lg:grid-cols-2 gap-6"></div>
+    </div>
+
+    <!-- 1. Redeem Preview Modal -->
+    <div id="redeem-modal" class="fixed inset-0 bg-black/50 hidden flex items-center justify-center z-[100] backdrop-blur-sm transition-opacity">
+        <div class="bg-white rounded-xl p-6 w-full max-w-lg shadow-2xl m-4 transform transition-all scale-100 flex flex-col max-h-[90vh]">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-xl font-bold text-gray-800 flex items-center gap-2">
+                    <i data-lucide="mail" class="w-5 h-5 text-blue-600"></i>
+                    Preview & Send
+                </h3>
+                <button id="modal-close-x" class="text-gray-400 hover:text-gray-600">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+            
+            <div class="overflow-y-auto flex-1 pr-2">
+                <div class="grid grid-cols-2 gap-4 mb-3">
+                    <div>
+                        <label class="block text-xs font-bold text-gray-500 uppercase mb-1">To (Recipient)</label>
+                        <input type="email" id="redeem-email" placeholder="client@email.com" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-800">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-gray-500 uppercase mb-1">From (Your Name)</label>
+                        <input type="text" id="redeem-sender" placeholder="Your Name / Company" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-800">
+                    </div>
+                </div>
+                
+                <div class="mb-3">
+                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Subject</label>
+                    <input type="text" id="redeem-subject" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-800 font-medium">
+                </div>
+                <div class="mb-2 relative">
+                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Message Body</label>
+                    <textarea id="redeem-body" rows="8" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-800 font-mono"></textarea>
+                    <button id="redeem-copy-btn" class="absolute top-8 right-2 bg-gray-100 hover:bg-gray-200 text-gray-600 p-1.5 rounded-md transition-colors" title="Copy Message Body">
+                        <i data-lucide="copy" class="w-4 h-4"></i>
+                    </button>
+                </div>
+            </div>
+            
+            <div class="mt-4 pt-4 border-t border-gray-100">
+                <div class="flex justify-end gap-3 mb-2">
+                    <button id="redeem-cancel" class="px-4 py-2 text-gray-600 font-medium hover:bg-gray-100 rounded-lg transition-colors text-sm">Cancel</button>
+                    <!-- Main Action: GMAIL (Now an A tag for reliability) -->
+                    <a id="redeem-confirm-gmail" href="#" target="_blank" class="px-6 py-2 bg-red-600 text-white font-medium rounded-lg hover:bg-red-700 shadow-md transition-colors flex items-center gap-2 text-sm no-underline">
+                        <i data-lucide="mail" class="w-4 h-4"></i>
+                        Open in Gmail
+                    </a>
+                </div>
+                <!-- Secondary Action: DEFAULT APP -->
+                <div class="text-center">
+                    <a id="redeem-confirm-default" href="#" class="text-xs text-blue-600 hover:underline">
+                        Use default mail app instead
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 2. Custom Undo Confirmation Modal -->
+    <div id="confirm-modal" class="fixed inset-0 bg-black/50 hidden flex items-center justify-center z-[110] backdrop-blur-sm transition-opacity">
+        <div class="bg-white rounded-xl p-6 w-full max-w-sm shadow-2xl m-4 transform transition-all scale-100 text-center">
+            <div class="w-12 h-12 bg-yellow-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <i data-lucide="rotate-ccw" class="w-6 h-6 text-yellow-600"></i>
+            </div>
+            <h3 class="text-xl font-bold text-gray-800 mb-2">Undo Redemption?</h3>
+            <p class="text-gray-600 text-sm mb-6">This will mark the voucher as available again. Are you sure?</p>
+            
+            <div class="flex justify-center gap-3">
+                <button id="confirm-cancel" class="px-4 py-2 text-gray-600 font-medium hover:bg-gray-100 rounded-lg transition-colors w-full">No, Keep it</button>
+                <button id="confirm-yes" class="px-4 py-2 bg-yellow-500 text-white font-medium rounded-lg hover:bg-yellow-600 shadow-md transition-colors w-full">
+                    Yes, Undo
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Container -->
+    <div id="toast-container" class="fixed bottom-4 right-4 z-[200] flex flex-col gap-2"></div>
+
+    <!-- Logic -->
+    <script>
+        const brandConfig = {
+            tng: { id: 'tng', name: "Touch 'n Go", label: "TnG eWallet", color: "#005EB8", icon: "credit-card" },
+            shopee: { id: 'shopee', name: "Shopee", label: "Shopee Voucher", color: "#EE4D2D", icon: "shopping-bag" },
+            lazada: { id: 'lazada', name: "Lazada", label: "Lazada Wallet", color: "#0f146d", icon: "gift" },
+            zus: { id: 'zus', name: "Zus Coffee", label: "Zus Coffee", color: "#182C53", icon: "coffee" }
+        };
+
+        let coupons = [
+            { amount: "50", serial: "PIP0791740", validity: "2026-05-06", pin: "3249402045", link: "https://woohoo-web.app.link/e/hdgelHLjsRb", currency: "MYR", redeemed: false },
+            { amount: "50", serial: "PIP0791703", validity: "2026-05-06", pin: "4915418307", link: "https://woohoo-web.app.link/e/hdgelHLjsRb", currency: "MYR", redeemed: false },
+            { amount: "10", serial: "PIP0804506", validity: "2026-05-07", pin: "1069862553", link: "https://woohoo-web.app.link/e/hdgelHLjsRb", currency: "MYR", redeemed: false }
+        ];
+
+        let currentBrandId = 'tng';
+        let isProcessing = false;
+        let currentRedeemIndex = null;
+        let currentUndoIndex = null;
+
+        // Elements
+        const header = document.getElementById('header');
+        const headerTitle = document.getElementById('header-title');
+        const headerIcon = document.getElementById('header-icon');
+        const brandSelector = document.getElementById('brand-selector');
+        const couponsGrid = document.getElementById('coupons-grid');
+        const couponCountEl = document.getElementById('coupon-count');
+        const emptyState = document.getElementById('empty-state');
+        const fileInput = document.getElementById('file-input');
+        const uploadBtn = document.getElementById('upload-btn');
+        const downloadBtn = document.getElementById('download-btn');
+        
+        // Modal & Toast
+        const modal = document.getElementById('redeem-modal');
+        const confirmModal = document.getElementById('confirm-modal');
+        const modalEmailInput = document.getElementById('redeem-email');
+        const modalSenderInput = document.getElementById('redeem-sender'); 
+        const modalSubjectInput = document.getElementById('redeem-subject');
+        const modalBodyInput = document.getElementById('redeem-body');
+        const modalCancelBtn = document.getElementById('redeem-cancel');
+        const modalConfirmGmailBtn = document.getElementById('redeem-confirm-gmail'); // Now an <a> tag
+        const modalConfirmDefaultBtn = document.getElementById('redeem-confirm-default'); // Now an <a> tag
+        const modalCopyBtn = document.getElementById('redeem-copy-btn');
+        const modalCloseX = document.getElementById('modal-close-x');
+        
+        const confirmCancelBtn = document.getElementById('confirm-cancel');
+        const confirmYesBtn = document.getElementById('confirm-yes');
+        const toastContainer = document.getElementById('toast-container');
+
+        function init() {
+            updateBrandTheme();
+            renderCoupons();
+            setupEventListeners();
+            lucide.createIcons();
+        }
+
+        function setupEventListeners() {
+            brandSelector.addEventListener('change', (e) => {
+                currentBrandId = e.target.value;
+                updateBrandTheme();
+                renderCoupons();
+            });
+            uploadBtn.addEventListener('click', () => { if (!isProcessing) fileInput.click(); });
+            fileInput.addEventListener('change', handleFileUpload);
+            downloadBtn.addEventListener('click', handleDownloadPDF);
+
+            // Redeem Modal
+            modalCancelBtn.addEventListener('click', closeRedeemModal);
+            modalCloseX.addEventListener('click', closeRedeemModal);
+            modalCopyBtn.addEventListener('click', copyModalBody);
+
+            // Add input listeners to update links in real-time
+            [modalEmailInput, modalSenderInput, modalSubjectInput, modalBodyInput].forEach(input => {
+                input.addEventListener('input', updateRedeemLinks);
+            });
+
+            // Handle actual clicks on the links to close modal/update state
+            modalConfirmGmailBtn.addEventListener('click', () => completeRedemption('Gmail'));
+            modalConfirmDefaultBtn.addEventListener('click', () => completeRedemption('Mail App'));
+
+            // Confirm Modal
+            confirmCancelBtn.addEventListener('click', closeConfirmModal);
+            confirmYesBtn.addEventListener('click', executeUndo);
+        }
+
+        function updateBrandTheme() {
+            const brand = brandConfig[currentBrandId];
+            header.style.backgroundColor = brand.color;
+            headerTitle.textContent = `${brand.name} Generator`;
+            headerIcon.setAttribute('data-lucide', brand.icon);
+            lucide.createIcons();
+            downloadBtn.style.color = brand.color;
+        }
+
+        function formatPin(pin) {
+            if (!pin) return "0000000000";
+            return pin.toString().padStart(10, '0');
+        }
+
+        window.copyToClipboard = function(text, btnId) {
+            const textArea = document.createElement("textarea");
+            textArea.value = text;
+            document.body.appendChild(textArea);
+            textArea.select();
+            try {
+                document.execCommand('copy');
+                const btn = document.getElementById(btnId);
+                btn.innerHTML = '<i data-lucide="check" class="w-5 h-5 text-green-500"></i>';
+                lucide.createIcons();
+                showToast("Copied to clipboard!", "success");
+                setTimeout(() => {
+                    btn.innerHTML = '<i data-lucide="copy" class="w-5 h-5"></i>';
+                    lucide.createIcons();
+                }, 2000);
+            } catch (err) { console.error('Failed to copy', err); }
+            document.body.removeChild(textArea);
+        }
+
+        function showToast(message, type = "info") {
+            const toast = document.createElement('div');
+            const bgClass = type === 'success' ? 'bg-green-600' : 'bg-gray-800';
+            toast.className = `${bgClass} text-white px-6 py-3 rounded-lg shadow-lg flex items-center gap-2 transform transition-all duration-300 toast-enter`;
+            toast.innerHTML = `<i data-lucide="${type === 'success' ? 'check-circle' : 'info'}" class="w-5 h-5"></i><span>${message}</span>`;
+            toastContainer.appendChild(toast);
+            lucide.createIcons();
+            requestAnimationFrame(() => { toast.classList.remove('toast-enter'); toast.classList.add('toast-enter-active'); });
+            setTimeout(() => {
+                toast.classList.remove('toast-enter-active'); toast.classList.add('toast-exit-active');
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+
+        // --- Button Click Handling ---
+        window.handleRedeemClick = function(index) {
+            if (coupons[index].redeemed) {
+                currentUndoIndex = index;
+                confirmModal.classList.remove('hidden');
+            } else {
+                openRedeemModal(index);
+            }
+        }
+
+        // --- Undo Logic ---
+        function closeConfirmModal() {
+            confirmModal.classList.add('hidden');
+            currentUndoIndex = null;
+        }
+
+        function executeUndo() {
+            if (currentUndoIndex !== null) {
+                coupons[currentUndoIndex].redeemed = false;
+                renderCoupons();
+                showToast("Voucher marked as available", "success");
+            }
+            closeConfirmModal();
+        }
+
+        // --- Redeem Logic ---
+        function openRedeemModal(index) {
+            currentRedeemIndex = index;
+            const coupon = coupons[index];
+            const brand = brandConfig[currentBrandId];
+            modalEmailInput.value = "";
+            modalSenderInput.value = "";
+            modalSubjectInput.value = `${brand.name} Voucher - ${coupon.currency} ${coupon.amount}`;
+            const bodyText = `Here is your ${brand.name} Voucher:\n\nAmount: ${coupon.currency} ${coupon.amount}\nSerial Number: ${coupon.serial}\nValid Until: ${coupon.validity}\n\nRedemption PIN: ${formatPin(coupon.pin)}\n\nRedeem here: ${coupon.link}`;
+            modalBodyInput.value = bodyText;
+            
+            // Force update links initially
+            updateRedeemLinks();
+
+            modal.classList.remove('hidden');
+            setTimeout(() => modalEmailInput.focus(), 50);
+        }
+
+        function updateRedeemLinks() {
+            const email = modalEmailInput.value.trim();
+            const senderName = modalSenderInput.value.trim();
+            const subject = modalSubjectInput.value;
+            let body = modalBodyInput.value;
+
+            if (senderName) body += `\n\nSent by: ${senderName}`;
+
+            const gmailBase = "https://mail.google.com/mail/?view=cm&fs=1";
+            const gmailLink = `${gmailBase}&to=${encodeURIComponent(email)}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+            const mailtoLink = `mailto:${email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+
+            modalConfirmGmailBtn.href = gmailLink;
+            modalConfirmDefaultBtn.href = mailtoLink;
+        }
+
+        function completeRedemption(methodName) {
+            if (currentRedeemIndex !== null) {
+                coupons[currentRedeemIndex].redeemed = true;
+                renderCoupons();
+                showToast(`Opening ${methodName}...`, "info");
+            }
+            closeRedeemModal();
+        }
+
+        function closeRedeemModal() {
+            modal.classList.add('hidden');
+            currentRedeemIndex = null;
+        }
+
+        function copyModalBody() {
+            const text = modalBodyInput.value;
+            const textArea = document.createElement("textarea");
+            textArea.value = text;
+            document.body.appendChild(textArea);
+            textArea.select();
+            try {
+                document.execCommand('copy');
+                modalCopyBtn.innerHTML = '<i data-lucide="check" class="w-4 h-4 text-green-600"></i>';
+                lucide.createIcons();
+                showToast("Message copied!", "success");
+                setTimeout(() => { modalCopyBtn.innerHTML = '<i data-lucide="copy" class="w-4 h-4"></i>'; lucide.createIcons(); }, 2000);
+            } catch (err) { }
+            document.body.removeChild(textArea);
+        }
+
+        function renderCoupons() {
+            const brand = brandConfig[currentBrandId];
+            couponCountEl.textContent = coupons.length;
+            if (coupons.length === 0) {
+                couponsGrid.innerHTML = '';
+                emptyState.classList.remove('hidden');
+                return;
+            }
+            emptyState.classList.add('hidden');
+            
+            couponsGrid.innerHTML = coupons.map((coupon, idx) => `
+                <div class="bg-white border border-gray-200 rounded-xl shadow-sm hover:shadow-md transition-shadow overflow-hidden flex flex-col md:flex-row h-auto w-full coupon-card ${coupon.redeemed ? 'opacity-75 grayscale-[0.5]' : ''}">
+                    <!-- Header -->
+                    <div style="background-color: ${coupon.redeemed ? '#6b7280' : brand.color}" class="p-3 text-white flex justify-between items-center md:w-16 md:flex-col md:justify-center md:items-center transition-colors duration-500 relative overflow-hidden">
+                        <div class="flex items-center justify-center md:mb-4 relative z-10"><i data-lucide="${brand.icon}" class="w-8 h-8 md:w-10 md:h-10 text-white/90"></i></div>
+                        <span class="font-bold text-lg md:rotate-[270deg] md:whitespace-nowrap md:tracking-widest flex-1 flex items-center justify-center z-10">${brand.label}</span>
+                        <span class="text-xs bg-white/20 px-2 py-1 rounded md:hidden z-10">Voucher</span>
+                    </div>
+                    <!-- Body -->
+                    <div class="p-5 flex-1 flex flex-col justify-between md:flex-row">
+                        <div class="flex-1 pr-4">
+                            <div class="flex items-baseline gap-1 mb-4 border-b border-gray-100 pb-2">
+                                <span class="text-3xl font-bold text-gray-800">${coupon.currency}</span>
+                                <span style="color: ${coupon.redeemed ? '#6b7280' : brand.color}" class="text-5xl font-extrabold transition-colors duration-500">${coupon.amount}</span>
+                            </div>
+                            <div class="space-y-3">
+                                <div class="flex items-start gap-3"><i data-lucide="hash" class="w-5 h-5 text-gray-400 mt-0.5"></i><div><p class="text-xs text-gray-500 uppercase font-semibold">Serial Number</p><p class="font-mono text-gray-800 font-medium">${coupon.serial}</p></div></div>
+                                <div class="flex items-start gap-3"><i data-lucide="calendar" class="w-5 h-5 text-gray-400 mt-0.5"></i><div><p class="text-xs text-gray-500 uppercase font-semibold">Valid Until</p><p class="font-medium text-red-600">${coupon.validity}</p></div></div>
+                                <div class="flex items-start gap-3">
+                                    <div class="w-5 flex justify-center mt-0.5"><span class="text-lg leading-none">🔐</span></div>
+                                    <div class="w-full">
+                                        <p class="text-xs text-gray-500 uppercase font-semibold">Redemption PIN</p>
+                                        <div class="flex items-center gap-2 mt-1">
+                                            <code class="bg-gray-100 px-2 py-1 rounded text-lg font-bold text-gray-800 tracking-wider">${formatPin(coupon.pin)}</code>
+                                            <button id="btn-copy-${idx}" onclick="copyToClipboard('${formatPin(coupon.pin)}', 'btn-copy-${idx}')" class="text-gray-400 hover:text-gray-800 transition-colors cursor-pointer" title="Copy PIN"><i data-lucide="copy" class="w-5 h-5"></i></button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <!-- Redeem Button -->
+                            <div class="mt-4 pt-4 border-t border-gray-100 redeem-controls">
+                                <button type="button" onclick="handleRedeemClick(${idx})" style="${coupon.redeemed ? '' : `background-color: ${brand.color}; border-color: ${brand.color};`}" class="w-full py-2 px-4 rounded-lg font-semibold flex items-center justify-center gap-2 transition-all cursor-pointer ${coupon.redeemed ? 'bg-gray-100 text-gray-500 hover:bg-gray-200 border border-gray-300' : 'text-white shadow-sm hover:opacity-90 active:scale-95 border'}" title="${coupon.redeemed ? 'Click to Undo' : 'Redeem Coupon'}">
+                                    ${coupon.redeemed ? '<i data-lucide="rotate-ccw" class="w-4 h-4"></i> Redeemed (Undo?)' : '<i data-lucide="send" class="w-4 h-4"></i> Redeem'}
+                                </button>
+                            </div>
+                        </div>
+                        <!-- QR Code -->
+                        <div class="mt-4 pt-4 border-t border-dashed border-gray-200 flex flex-col items-center justify-center md:mt-0 md:pt-0 md:border-t-0 md:border-l md:pl-6 md:w-56">
+                            <div class="bg-white p-2 rounded-lg border border-gray-100 mb-2 relative">
+                                <img crossorigin="anonymous" src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(coupon.link)}&color=${brand.color.replace('#', '')}&format=png" alt="Scan to Redeem" class="w-32 h-32 object-contain ${coupon.redeemed ? 'opacity-50' : ''}" />
+                                ${coupon.redeemed ? `<div class="absolute inset-0 flex items-center justify-center"><div class="bg-white/80 rounded-full p-2"><i data-lucide="check" class="w-8 h-8 text-green-600"></i></div></div>` : ''}
+                            </div>
+                            <p class="text-[10px] text-gray-400 text-center uppercase tracking-wide">Scan to Redeem</p>
+                            <a href="${coupon.link}" target="_blank" rel="noreferrer" style="color: ${coupon.redeemed ? '#6b7280' : brand.color}" class="text-xs font-semibold mt-1 flex items-center gap-1 hover:underline transition-colors duration-500 open-link-control">Open Link <i data-lucide="external-link" class="w-3 h-3"></i></a>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+            lucide.createIcons();
+        }
+
+        async function handleFileUpload(event) {
+            const file = event.target.files[0];
+            if (!file || file.type !== 'application/pdf') { alert("Please upload a PDF file."); return; }
+            setParsingState(true);
+            try {
+                const arrayBuffer = await file.arrayBuffer();
+                const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+                let fullText = "";
+                for (let i = 1; i <= pdf.numPages; i++) {
+                    const page = await pdf.getPage(i);
+                    const textContent = await page.getTextContent();
+                    fullText += textContent.items.map(item => item.str).join(" ") + " ";
+                }
+                const tokens = fullText.split(/\s+/);
+                const newCoupons = [];
+                const linkRegex = /https:\/\/woohoo-web\.app\.link\/[a-zA-Z0-9]+/;
+                const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+                const serialRegex = /^PIP[O0]?\d+$/; 
+                const pinRegex = /^\d{5,12}$/;
+                const amountRegex = /^(10|20|50|100)$/; 
+                for (let i = 0; i < tokens.length; i++) {
+                    if (linkRegex.test(tokens[i])) {
+                        const link = tokens[i];
+                        const windowStart = Math.max(0, i - 15);
+                        const windowEnd = Math.min(tokens.length, i + 5);
+                        const scanWindow = tokens.slice(windowStart, windowEnd);
+                        let pin = "Unknown", serial = "Unknown", validity = "Unknown", amount = "??";
+                        for (let j = i - 1; j >= windowStart; j--) if (pinRegex.test(tokens[j])) { pin = tokens[j].padStart(10, '0'); break; }
+                        for (const token of scanWindow) if (dateRegex.test(token)) { validity = token; break; }
+                        for (const token of scanWindow) if (serialRegex.test(token)) { serial = token.replace("PIPO", "PIP0"); break; }
+                        for (const token of scanWindow) if (amountRegex.test(token)) { amount = token; }
+                        newCoupons.push({ amount, serial, validity, pin, link, currency: "MYR", redeemed: false });
+                    }
+                }
+                if (newCoupons.length > 0) { coupons = newCoupons; renderCoupons(); showToast(`Successfully loaded ${newCoupons.length} coupons!`, 'success'); }
+                else { showToast("Could not find any valid coupon patterns.", 'info'); }
+            } catch (error) { console.error(error); alert("Failed to read PDF file."); }
+            finally { setParsingState(false); fileInput.value = ""; }
+        }
+
+        async function handleDownloadPDF() {
+            if (isProcessing) return;
+            setGeneratingState(true);
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF('p', 'mm', 'a4');
+            const pageWidth = 210, pageHeight = 297, margin = 10, spacing = 10, itemsPerPage = 4;
+            const maxItemHeight = (pageHeight - (margin * 2) - (spacing * (itemsPerPage - 1))) / itemsPerPage;
+            let currentY = margin;
+            document.querySelectorAll('.redeem-controls').forEach(btn => btn.style.display = 'none');
+            document.querySelectorAll('.open-link-control').forEach(link => link.style.display = 'none');
+            const couponElements = couponsGrid.children;
+            try {
+                for (let i = 0; i < couponElements.length; i++) {
+                    const canvas = await html2canvas(couponElements[i], { scale: 2, useCORS: true, logging: false, backgroundColor: '#ffffff', windowWidth: 1280 });
+                    const imgData = canvas.toDataURL('image/jpeg', 0.95);
+                    const imgProps = doc.getImageProperties(imgData);
+                    let pdfW = pageWidth - (margin * 2);
+                    let pdfH = (imgProps.height * pdfW) / imgProps.width;
+                    if (pdfH > maxItemHeight) { pdfH = maxItemHeight; pdfW = (imgProps.width * pdfH) / imgProps.height; }
+                    const xPos = margin + ((pageWidth - (margin * 2)) - pdfW) / 2;
+                    if (i > 0 && i % itemsPerPage === 0) { doc.addPage(); currentY = margin; }
+                    doc.addImage(imgData, 'JPEG', xPos, currentY, pdfW, pdfH);
+                    currentY += pdfH + spacing;
+                    updateProgress(Math.round(((i + 1) / couponElements.length) * 100));
+                    await new Promise(r => setTimeout(r, 10));
+                }
+                doc.save(`${brandConfig[currentBrandId].name}-Vouchers.pdf`);
+                showToast("PDF Downloaded!", 'success');
+            } catch (error) { console.error(error); alert("PDF Generation Failed"); }
+            finally {
+                document.querySelectorAll('.redeem-controls').forEach(btn => btn.style.display = '');
+                document.querySelectorAll('.open-link-control').forEach(link => link.style.display = '');
+                setGeneratingState(false);
+            }
+        }
+
+        function setParsingState(isParsing) {
+            isProcessing = isParsing;
+            const btnText = uploadBtn.querySelector('#upload-text'), btnIcon = uploadBtn.querySelector('.icon-upload'), btnLoader = uploadBtn.querySelector('.icon-loading');
+            if (isParsing) { uploadBtn.classList.add('opacity-50', 'cursor-wait'); btnText.textContent = 'Parsing...'; btnIcon.classList.add('hidden'); btnLoader.classList.remove('hidden'); }
+            else { uploadBtn.classList.remove('opacity-50', 'cursor-wait'); btnText.textContent = 'Upload PDF'; btnIcon.classList.remove('hidden'); btnLoader.classList.add('hidden'); }
+        }
+
+        function setGeneratingState(isGenerating) {
+            isProcessing = isGenerating;
+            const btnText = downloadBtn.querySelector('#download-text'), btnIcon = downloadBtn.querySelector('.icon-download'), btnLoader = downloadBtn.querySelector('.icon-loading');
+            if (isGenerating) { downloadBtn.classList.add('opacity-80', 'cursor-not-allowed'); btnIcon.classList.add('hidden'); btnLoader.classList.remove('hidden'); btnText.textContent = `Generating...`; }
+            else { downloadBtn.classList.remove('opacity-80', 'cursor-not-allowed'); btnIcon.classList.remove('hidden'); btnLoader.classList.add('hidden'); btnText.textContent = 'Download PDF'; }
+        }
+
+        function updateProgress(percent) { const btnText = downloadBtn.querySelector('#download-text'); if(btnText) btnText.textContent = `Generating ${percent}%`; }
+
+        document.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>
