@@ -1,0 +1,558 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Coupon Generator</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    
+    <!-- PDF Libraries -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+
+    <style>
+        /* Custom styles for print and transitions */
+        @media print {
+            @page { margin: 0.5cm; size: auto; }
+            body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        }
+        .coupon-card {
+            break-inside: avoid;
+        }
+        /* Spinner animation */
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        .animate-spin {
+            animation: spin 1s linear infinite;
+        }
+    </style>
+</head>
+<body class="min-h-screen bg-gray-50 pb-12 transition-colors duration-500" id="main-body">
+
+    <!-- PDF Worker Configuration -->
+    <script>
+        // Initialize PDF.js worker
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    </script>
+
+    <!-- Header -->
+    <div id="header" class="text-white p-6 shadow-md sticky top-0 z-50 transition-colors duration-500">
+        <div class="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
+            <div>
+                <h1 class="text-2xl font-bold flex items-center gap-2">
+                    <i id="header-icon" data-lucide="credit-card" class="w-8 h-8"></i>
+                    <span id="header-title">Touch 'n Go Generator</span>
+                </h1>
+                <p class="text-white/90 mt-1 opacity-90">
+                    <span id="coupon-count">0</span> vouchers loaded
+                </p>
+            </div>
+            
+            <div class="flex flex-wrap items-center justify-center gap-3">
+                <!-- Brand Selector -->
+                <div class="relative">
+                    <select id="brand-selector" class="appearance-none bg-white text-gray-800 font-semibold py-2 pl-4 pr-10 rounded-full cursor-pointer focus:outline-none focus:ring-2 focus:ring-white/50 shadow-sm">
+                        <option value="tng">Touch 'n Go</option>
+                        <option value="shopee">Shopee</option>
+                        <option value="lazada">Lazada</option>
+                        <option value="zus">Zus Coffee</option>
+                    </select>
+                    <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-800">
+                        <svg class="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/></svg>
+                    </div>
+                </div>
+
+                <div class="h-6 w-px bg-white/30 hidden md:block"></div>
+
+                <!-- Upload Button -->
+                <input type="file" id="file-input" accept=".pdf" class="hidden" />
+                <button id="upload-btn" class="bg-black/20 hover:bg-black/30 text-white border border-white/20 px-4 py-2 rounded-full font-semibold flex items-center gap-2 transition-all shadow-sm active:scale-95">
+                    <i data-lucide="upload" class="w-5 h-5 icon-upload"></i>
+                    <i data-lucide="loader" class="w-5 h-5 hidden icon-loading animate-spin"></i>
+                    <span id="upload-text">Upload PDF</span>
+                </button>
+
+                <!-- Download Button -->
+                <button id="download-btn" class="relative z-50 cursor-pointer bg-white px-6 py-2 rounded-full font-semibold flex items-center gap-2 transition-all shadow-sm hover:bg-gray-50 active:scale-95">
+                    <i data-lucide="file-down" class="w-5 h-5 icon-download"></i>
+                    <i data-lucide="loader" class="w-5 h-5 hidden icon-loading animate-spin"></i>
+                    <span id="download-text">Download PDF</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Grid -->
+    <div class="max-w-7xl mx-auto p-4 md:p-8">
+        
+        <div id="empty-state" class="hidden text-center py-20 text-gray-400 border-2 border-dashed border-gray-300 rounded-xl">
+            <i data-lucide="file-text" class="w-16 h-16 mx-auto mb-4 opacity-50"></i>
+            <p class="text-xl font-semibold">No coupons loaded</p>
+            <p class="text-sm">Upload a PDF file to generate vouchers</p>
+        </div>
+
+        <div id="coupons-grid" class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <!-- Coupons will be injected here -->
+        </div>
+    </div>
+
+    <!-- Logic -->
+    <script>
+        // --- Configuration ---
+        const brandConfig = {
+            tng: {
+                id: 'tng',
+                name: "Touch 'n Go",
+                label: "TnG eWallet",
+                color: "#005EB8",
+                icon: "credit-card"
+            },
+            shopee: {
+                id: 'shopee',
+                name: "Shopee",
+                label: "Shopee Voucher",
+                color: "#EE4D2D",
+                icon: "shopping-bag"
+            },
+            lazada: {
+                id: 'lazada',
+                name: "Lazada",
+                label: "Lazada Wallet",
+                color: "#0f146d",
+                icon: "gift"
+            },
+            zus: {
+                id: 'zus',
+                name: "Zus Coffee",
+                label: "Zus Coffee",
+                color: "#182C53",
+                icon: "coffee"
+            }
+        };
+
+        // Default Data
+        let coupons = [
+            { amount: "50", serial: "PIP0791740", validity: "2026-05-06", pin: "3249402045", link: "https://woohoo-web.app.link/e/hdgelHLjsRb", currency: "MYR" },
+            { amount: "50", serial: "PIP0791703", validity: "2026-05-06", pin: "4915418307", link: "https://woohoo-web.app.link/e/hdgelHLjsRb", currency: "MYR" },
+            { amount: "10", serial: "PIP0804506", validity: "2026-05-07", pin: "1069862553", link: "https://woohoo-web.app.link/e/hdgelHLjsRb", currency: "MYR" }
+        ];
+
+        let currentBrandId = 'tng';
+        let isProcessing = false;
+
+        // --- DOM Elements ---
+        const header = document.getElementById('header');
+        const headerTitle = document.getElementById('header-title');
+        const headerIcon = document.getElementById('header-icon');
+        const brandSelector = document.getElementById('brand-selector');
+        const couponsGrid = document.getElementById('coupons-grid');
+        const couponCountEl = document.getElementById('coupon-count');
+        const emptyState = document.getElementById('empty-state');
+        const fileInput = document.getElementById('file-input');
+        const uploadBtn = document.getElementById('upload-btn');
+        const downloadBtn = document.getElementById('download-btn');
+
+        // --- Initialization ---
+        function init() {
+            updateBrandTheme();
+            renderCoupons();
+            setupEventListeners();
+            lucide.createIcons();
+        }
+
+        // --- Event Listeners ---
+        function setupEventListeners() {
+            brandSelector.addEventListener('change', (e) => {
+                currentBrandId = e.target.value;
+                updateBrandTheme();
+                renderCoupons(); // Re-render to update icons/colors inside cards
+            });
+
+            uploadBtn.addEventListener('click', () => {
+                if (!isProcessing) fileInput.click();
+            });
+
+            fileInput.addEventListener('change', handleFileUpload);
+
+            downloadBtn.addEventListener('click', handleDownloadPDF);
+        }
+
+        // --- Core Functions ---
+
+        function updateBrandTheme() {
+            const brand = brandConfig[currentBrandId];
+            
+            // Update Header Colors
+            header.style.backgroundColor = brand.color;
+            
+            // Update Header Text
+            headerTitle.textContent = `${brand.name} Generator`;
+            
+            // Update Header Icon (Lucide needs data-lucide attr update + re-scan)
+            headerIcon.setAttribute('data-lucide', brand.icon);
+            lucide.createIcons();
+
+            // Update Download Button Text Color
+            downloadBtn.style.color = brand.color;
+        }
+
+        function formatPin(pin) {
+            if (!pin) return "0000000000";
+            return pin.toString().padStart(10, '0');
+        }
+
+        function copyToClipboard(text, btnId) {
+            const textArea = document.createElement("textarea");
+            textArea.value = text;
+            document.body.appendChild(textArea);
+            textArea.select();
+            try {
+                document.execCommand('copy');
+                
+                // Visual feedback
+                const btn = document.getElementById(btnId);
+                const originalIcon = btn.innerHTML;
+                btn.innerHTML = '<i data-lucide="check" class="w-5 h-5 text-green-500"></i>';
+                lucide.createIcons();
+                
+                setTimeout(() => {
+                    btn.innerHTML = '<i data-lucide="copy" class="w-5 h-5"></i>';
+                    lucide.createIcons();
+                }, 2000);
+
+            } catch (err) {
+                console.error('Failed to copy', err);
+            }
+            document.body.removeChild(textArea);
+        }
+
+        function renderCoupons() {
+            const brand = brandConfig[currentBrandId];
+            couponCountEl.textContent = coupons.length;
+
+            if (coupons.length === 0) {
+                couponsGrid.innerHTML = '';
+                emptyState.classList.remove('hidden');
+                return;
+            }
+
+            emptyState.classList.add('hidden');
+            
+            couponsGrid.innerHTML = coupons.map((coupon, idx) => `
+                <div class="bg-white border border-gray-200 rounded-xl shadow-sm hover:shadow-md transition-shadow overflow-hidden flex flex-col md:flex-row h-auto w-full coupon-card">
+                    <!-- Header Strip -->
+                    <div style="background-color: ${brand.color}" class="p-3 text-white flex justify-between items-center md:w-16 md:flex-col md:justify-center md:items-center transition-colors duration-500 relative overflow-hidden">
+                        
+                        <!-- Icon -->
+                        <div class="flex items-center justify-center md:mb-4 relative z-10">
+                            <i data-lucide="${brand.icon}" class="w-8 h-8 md:w-10 md:h-10 text-white/90"></i>
+                        </div>
+
+                        <!-- Text Label -->
+                        <span class="font-bold text-lg md:rotate-[270deg] md:whitespace-nowrap md:tracking-widest flex-1 flex items-center justify-center z-10">
+                            ${brand.label}
+                        </span>
+                        
+                        <span class="text-xs bg-white/20 px-2 py-1 rounded md:hidden z-10">Voucher</span>
+                    </div>
+
+                    <!-- Content Body -->
+                    <div class="p-5 flex-1 flex flex-col justify-between md:flex-row">
+                        
+                        <!-- Left Side: Details -->
+                        <div class="flex-1">
+                            <div class="flex items-baseline gap-1 mb-4 border-b border-gray-100 pb-2">
+                                <span class="text-3xl font-bold text-gray-800">${coupon.currency}</span>
+                                <span style="color: ${brand.color}" class="text-5xl font-extrabold transition-colors duration-500">
+                                    ${coupon.amount}
+                                </span>
+                            </div>
+
+                            <div class="space-y-3">
+                                <div class="flex items-start gap-3">
+                                    <i data-lucide="hash" class="w-5 h-5 text-gray-400 mt-0.5"></i>
+                                    <div>
+                                        <p class="text-xs text-gray-500 uppercase font-semibold">Serial Number</p>
+                                        <p class="font-mono text-gray-800 font-medium">${coupon.serial}</p>
+                                    </div>
+                                </div>
+
+                                <div class="flex items-start gap-3">
+                                    <i data-lucide="calendar" class="w-5 h-5 text-gray-400 mt-0.5"></i>
+                                    <div>
+                                        <p class="text-xs text-gray-500 uppercase font-semibold">Valid Until</p>
+                                        <p class="font-medium text-red-600">${coupon.validity}</p>
+                                    </div>
+                                </div>
+
+                                <div class="flex items-start gap-3">
+                                    <div class="w-5 flex justify-center mt-0.5">
+                                        <span class="text-lg leading-none">🔐</span>
+                                    </div>
+                                    <div class="w-full">
+                                        <p class="text-xs text-gray-500 uppercase font-semibold">Redemption PIN</p>
+                                        <div class="flex items-center gap-2 mt-1">
+                                            <code class="bg-gray-100 px-2 py-1 rounded text-lg font-bold text-gray-800 tracking-wider">
+                                                ${formatPin(coupon.pin)}
+                                            </code>
+                                            <button id="btn-copy-${idx}" onclick="copyToClipboard('${formatPin(coupon.pin)}', 'btn-copy-${idx}')" class="text-gray-400 hover:text-gray-800 transition-colors cursor-pointer" title="Copy PIN">
+                                                <i data-lucide="copy" class="w-5 h-5"></i>
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Right Side: QR Code -->
+                        <div class="mt-4 pt-4 border-t border-dashed border-gray-200 flex flex-col items-center justify-center md:mt-0 md:pt-0 md:border-t-0 md:border-l md:pl-6 md:w-56">
+                            <div class="bg-white p-2 rounded-lg border border-gray-100 mb-2">
+                                <img 
+                                    crossorigin="anonymous"
+                                    src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(coupon.link)}&color=${brand.color.replace('#', '')}&format=png" 
+                                    alt="Scan to Redeem"
+                                    class="w-32 h-32 object-contain" 
+                                />
+                            </div>
+                            <p class="text-[10px] text-gray-400 text-center uppercase tracking-wide">Scan to Redeem</p>
+                            <a href="${coupon.link}" target="_blank" rel="noreferrer" style="color: ${brand.color}" class="text-xs font-semibold mt-1 flex items-center gap-1 hover:underline transition-colors duration-500">
+                                Open Link <i data-lucide="external-link" class="w-3 h-3"></i>
+                            </a>
+                        </div>
+
+                    </div>
+                </div>
+            `).join('');
+
+            lucide.createIcons();
+        }
+
+        // --- File Parsing Logic ---
+        async function handleFileUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            if (file.type !== 'application/pdf') {
+                alert("Please upload a PDF file.");
+                return;
+            }
+
+            setParsingState(true);
+
+            try {
+                const arrayBuffer = await file.arrayBuffer();
+                const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+                let fullText = "";
+
+                for (let i = 1; i <= pdf.numPages; i++) {
+                    const page = await pdf.getPage(i);
+                    const textContent = await page.getTextContent();
+                    const pageText = textContent.items.map(item => item.str).join(" ");
+                    fullText += pageText + " ";
+                }
+
+                const tokens = fullText.split(/\s+/);
+                const newCoupons = [];
+                
+                const linkRegex = /https:\/\/woohoo-web\.app\.link\/[a-zA-Z0-9]+/;
+                const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+                const serialRegex = /^PIP[O0]?\d+$/; 
+                const pinRegex = /^\d{5,12}$/;
+                const amountRegex = /^(10|20|50|100)$/; 
+
+                for (let i = 0; i < tokens.length; i++) {
+                    if (linkRegex.test(tokens[i])) {
+                        const link = tokens[i];
+                        
+                        const windowStart = Math.max(0, i - 15);
+                        const windowEnd = Math.min(tokens.length, i + 5);
+                        const scanWindow = tokens.slice(windowStart, windowEnd);
+
+                        let pin = "Unknown";
+                        let serial = "Unknown";
+                        let validity = "Unknown";
+                        let amount = "??";
+
+                        for (let j = i - 1; j >= windowStart; j--) {
+                            if (pinRegex.test(tokens[j])) {
+                                pin = tokens[j].padStart(10, '0');
+                                break; 
+                            }
+                        }
+
+                        for (const token of scanWindow) {
+                            if (dateRegex.test(token)) {
+                                validity = token;
+                                break;
+                            }
+                        }
+
+                        for (const token of scanWindow) {
+                            if (serialRegex.test(token)) {
+                                serial = token.replace("PIPO", "PIP0");
+                                break;
+                            }
+                        }
+
+                        for (const token of scanWindow) {
+                            if (amountRegex.test(token)) {
+                                amount = token;
+                            }
+                        }
+
+                        newCoupons.push({
+                            amount,
+                            serial,
+                            validity,
+                            pin,
+                            link,
+                            currency: "MYR"
+                        });
+                    }
+                }
+
+                if (newCoupons.length > 0) {
+                    coupons = newCoupons;
+                    renderCoupons();
+                    alert(`Successfully loaded ${newCoupons.length} coupons!`);
+                } else {
+                    alert("Could not find any valid coupon patterns in this PDF.");
+                }
+
+            } catch (error) {
+                console.error("Error parsing PDF:", error);
+                alert("Failed to read PDF file.");
+            } finally {
+                setParsingState(false);
+                fileInput.value = "";
+            }
+        }
+
+        // --- PDF Generation Logic ---
+        async function handleDownloadPDF() {
+            if (isProcessing) return;
+            setGeneratingState(true);
+
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF('p', 'mm', 'a4');
+            const pageHeight = 297;
+            const pageWidth = 210;
+            const margin = 10;
+            
+            // Config for 4 items per page
+            const itemsPerPage = 4;
+            const spacing = 10; 
+            const maxItemHeight = (pageHeight - (margin * 2) - (spacing * (itemsPerPage - 1))) / itemsPerPage;
+
+            const startY = margin;
+            let currentY = startY;
+
+            const couponElements = couponsGrid.children;
+            const totalCoupons = couponElements.length;
+            const brand = brandConfig[currentBrandId];
+
+            try {
+                for (let i = 0; i < totalCoupons; i++) {
+                    const element = couponElements[i];
+                    
+                    const canvas = await html2canvas(element, {
+                        scale: 2,
+                        useCORS: true,
+                        logging: false,
+                        backgroundColor: '#ffffff',
+                        windowWidth: 1280 // Force desktop layout width for correct capture
+                    });
+
+                    const imgData = canvas.toDataURL('image/jpeg', 0.95);
+                    
+                    const imgProps = doc.getImageProperties(imgData);
+                    let pdfImgWidth = pageWidth - (margin * 2);
+                    let pdfImgHeight = (imgProps.height * pdfImgWidth) / imgProps.width;
+
+                    if (pdfImgHeight > maxItemHeight) {
+                        pdfImgHeight = maxItemHeight;
+                        pdfImgWidth = (imgProps.width * pdfImgHeight) / imgProps.height;
+                    }
+
+                    const xPos = margin + ((pageWidth - (margin * 2)) - pdfImgWidth) / 2;
+
+                    if (i > 0 && i % itemsPerPage === 0) {
+                        doc.addPage();
+                        currentY = startY;
+                    }
+
+                    doc.addImage(imgData, 'JPEG', xPos, currentY, pdfImgWidth, pdfImgHeight);
+                    currentY += pdfImgHeight + spacing;
+
+                    updateProgress(Math.round(((i + 1) / totalCoupons) * 100));
+                    await new Promise(resolve => setTimeout(resolve, 10));
+                }
+
+                doc.save(`${brand.name}-Vouchers.pdf`);
+            } catch (error) {
+                console.error("PDF Generation failed", error);
+                alert("Failed to generate PDF. Please ensure your internet connection is active for QR codes.");
+            } finally {
+                setGeneratingState(false);
+            }
+        }
+
+        // --- UI Helpers ---
+        function setParsingState(isParsing) {
+            isProcessing = isParsing;
+            const btnText = uploadBtn.querySelector('#upload-text');
+            const btnIcon = uploadBtn.querySelector('.icon-upload');
+            const btnLoader = uploadBtn.querySelector('.icon-loading');
+
+            if (isParsing) {
+                uploadBtn.classList.add('opacity-50', 'cursor-wait');
+                btnText.textContent = 'Parsing...';
+                btnIcon.classList.add('hidden');
+                btnLoader.classList.remove('hidden');
+            } else {
+                uploadBtn.classList.remove('opacity-50', 'cursor-wait');
+                btnText.textContent = 'Upload PDF';
+                btnIcon.classList.remove('hidden');
+                btnLoader.classList.add('hidden');
+            }
+        }
+
+        function setGeneratingState(isGenerating) {
+            isProcessing = isGenerating;
+            const btnText = downloadBtn.querySelector('#download-text');
+            const btnIcon = downloadBtn.querySelector('.icon-download');
+            const btnLoader = downloadBtn.querySelector('.icon-loading');
+
+            if (isGenerating) {
+                downloadBtn.classList.add('opacity-80', 'cursor-not-allowed');
+                downloadBtn.classList.remove('hover:bg-gray-50', 'active:scale-95');
+                btnIcon.classList.add('hidden');
+                btnLoader.classList.remove('hidden');
+                btnText.textContent = `Generating 0%`;
+            } else {
+                downloadBtn.classList.remove('opacity-80', 'cursor-not-allowed');
+                downloadBtn.classList.add('hover:bg-gray-50', 'active:scale-95');
+                btnIcon.classList.remove('hidden');
+                btnLoader.classList.add('hidden');
+                btnText.textContent = 'Download PDF';
+            }
+        }
+
+        function updateProgress(percent) {
+            const btnText = downloadBtn.querySelector('#download-text');
+            if (btnText) btnText.textContent = `Generating ${percent}%`;
+        }
+
+        // Start
+        document.addEventListener('DOMContentLoaded', init);
+
+    </script>
+</body>
+</html>
