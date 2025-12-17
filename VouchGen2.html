@@ -248,29 +248,29 @@
             <!-- Modal Body (Scrollable) -->
             <div class="p-6 overflow-y-auto manual-content prose prose-sm max-w-none text-gray-600">
                 
-                <p class="lead"><strong>Version 2.0</strong></p>
-                <p>VouchGen is a web-based tool designed to automatically parse bulk e-voucher PDFs (Touch 'n Go, Shopee, Lazada, Zus Coffee) and convert them into individual, easy-to-scan coupon cards.</p>
+                <p class="lead"><strong>Version 2.1</strong></p>
+                <p>VouchGen is a web-based tool designed to automatically parse bulk e-voucher PDFs and convert them into individual, easy-to-scan coupon cards with optimized layouts.</p>
 
                 <h3 class="text-gray-800 font-bold mt-6 mb-2 text-lg">1. Getting Started</h3>
                 <p>Access the tool via your web browser. No installation is required; the tool runs entirely in your browser.</p>
 
                 <h3 class="text-gray-800 font-bold mt-6 mb-2 text-lg">2. Core Features & How to Use</h3>
 
-                <h4 class="font-bold text-gray-700 mt-4 mb-1">A. Uploading Voucher Data</h4>
+                <h4 class="font-bold text-gray-700 mt-4 mb-1">A. Uploading & Auto-Detection</h4>
                 <ol class="list-decimal pl-5 space-y-1">
                     <li>Click the <strong>"Upload"</strong> button in the top right corner.</li>
-                    <li>Select the PDF file containing your voucher list (e.g., <em>Touch n Go eWallet E-Gift Vou.pdf</em>).</li>
-                    <li>The tool will process the file. A success message will appear showing how many coupons were loaded.</li>
+                    <li>Select the PDF file containing your voucher list.</li>
+                    <li>The tool will <strong>automatically detect</strong> the brand (Touch 'n Go, Shopee, Lazada, Zus Coffee) and apply the correct theme.</li>
                 </ol>
 
-                <h4 class="font-bold text-gray-700 mt-4 mb-1">B. Selecting the Brand</h4>
-                <p>Locate the dropdown menu in the top navigation bar to switch branding (Touch 'n Go, Shopee, Lazada, or Zus Coffee). This updates the logos and colors.</p>
+                <h4 class="font-bold text-gray-700 mt-4 mb-1">B. Manual Brand Selection</h4>
+                <p>If the auto-detection is incorrect, or you wish to override it, use the dropdown menu in the top navigation bar to manually switch between brands.</p>
 
                 <h4 class="font-bold text-gray-700 mt-4 mb-1">C. Organizing Coupons</h4>
                 <ul class="list-disc pl-5 space-y-1">
                     <li><strong>Group by Value:</strong> Toggle the "Group" switch at the top.
                         <ul class="list-circle pl-5 mt-1">
-                            <li><strong>ON:</strong> Coupons are separated into sections (e.g., "MYR 10 Vouchers").</li>
+                            <li><strong>ON:</strong> Coupons are separated into sections (e.g., "RM 10 Vouchers").</li>
                             <li><strong>OFF:</strong> Coupons are listed in a flat grid.</li>
                         </ul>
                     </li>
@@ -278,16 +278,14 @@
 
                 <h4 class="font-bold text-gray-700 mt-4 mb-1">D. Distributing & Redeeming</h4>
                 <ul class="list-disc pl-5 space-y-1">
-                    <li><strong>To Send via Email:</strong> Click "Redeem", enter recipient email, and choose "Open in Gmail" or "Use default mail app".</li>
-                    <li><strong>Manual Redemption:</strong> Click "Redeem", leave email blank, and click the link to mark as used.</li>
-                    <li><strong>Undo:</strong> Click the gray "Redeemed (Undo?)" button and confirm to restore the voucher.</li>
+                    <li><strong>Redeem/Mark as Used:</strong> Click the "Redeem" button to dim the card and mark it as used locally.</li>
+                    <li><strong>Copy PIN:</strong> Click the copy icon next to the PIN code to paste it into the respective e-wallet app.</li>
+                    <li><strong>Send via Email:</strong> Inside the Redeem menu, enter a recipient email to generate a pre-filled email with the PIN and details.</li>
+                    <li><strong>Undo:</strong> Click the gray "Redeemed (Undo?)" button to mark the voucher as available again.</li>
                 </ul>
 
-                <h4 class="font-bold text-gray-700 mt-4 mb-1">E. Copying PIN Codes</h4>
-                <p>Click the small <strong>Copy Icon</strong> next to the PIN number on any card to instantly copy the 10-digit PIN.</p>
-
-                <h4 class="font-bold text-gray-700 mt-4 mb-1">F. Saving as PDF</h4>
-                <p>Click the <strong>"PDF"</strong> button to download a printable version. The layout is optimized to fit 4 coupons per A4 page.</p>
+                <h4 class="font-bold text-gray-700 mt-4 mb-1">E. PDF Generation</h4>
+                <p>Click the <strong>"PDF"</strong> button to download a printable version. The layout creates a clean grid optimized for A4 paper.</p>
 
                 <h3 class="text-gray-800 font-bold mt-6 mb-2 text-lg">3. Troubleshooting</h3>
                 <div class="overflow-x-auto">
