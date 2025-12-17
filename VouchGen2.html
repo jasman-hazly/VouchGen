@@ -158,8 +158,8 @@
 
     <!-- 1. Redeem Preview Modal -->
     <div id="redeem-modal" class="fixed inset-0 bg-black/50 hidden flex items-center justify-center z-[100] backdrop-blur-sm transition-opacity">
-        <div class="bg-white rounded-xl p-6 w-full max-w-lg shadow-2xl m-4 transform transition-all scale-100 flex flex-col max-h-[90vh]">
-            <div class="flex justify-between items-center mb-4">
+        <div class="bg-white rounded-xl p-6 w-full max-w-lg shadow-2xl m-4 transform transition-all scale-100 flex flex-col max-h-[95vh]">
+            <div class="flex justify-between items-center mb-4 shrink-0">
                 <h3 class="text-xl font-bold text-gray-800 flex items-center gap-2">
                     <i data-lucide="mail" class="w-5 h-5 text-blue-600"></i>
                     Preview & Send
@@ -170,6 +170,19 @@
             </div>
             
             <div class="overflow-y-auto flex-1 pr-2">
+                <!-- Card Preview Container -->
+                <div class="mb-4">
+                    <div class="flex justify-between items-end mb-1">
+                        <label class="block text-xs font-bold text-gray-500 uppercase">Voucher Preview</label>
+                        <button id="redeem-copy-image-btn" class="text-xs text-blue-600 hover:text-blue-700 font-semibold flex items-center gap-1">
+                            <i data-lucide="image" class="w-3 h-3"></i> Copy Image to Clipboard
+                        </button>
+                    </div>
+                    <!-- The card HTML will be injected here -->
+                    <div id="redeem-card-preview" class="border border-gray-200 rounded-xl overflow-hidden shadow-sm pointer-events-none origin-top scale-95"></div>
+                    <p class="text-[10px] text-gray-400 mt-1 text-center italic">Tip: Click "Copy Image" above, then paste (Ctrl+V) into the email body.</p>
+                </div>
+
                 <div class="grid grid-cols-2 gap-4 mb-3">
                     <div>
                         <label class="block text-xs font-bold text-gray-500 uppercase mb-1">To (Recipient)</label>
@@ -186,15 +199,15 @@
                     <input type="text" id="redeem-subject" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-800 font-medium">
                 </div>
                 <div class="mb-2 relative">
-                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Message Body</label>
-                    <textarea id="redeem-body" rows="8" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-800 font-mono"></textarea>
-                    <button id="redeem-copy-btn" class="absolute top-8 right-2 bg-gray-100 hover:bg-gray-200 text-gray-600 p-1.5 rounded-md transition-colors" title="Copy Message Body">
+                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Text Message Body</label>
+                    <textarea id="redeem-body" rows="6" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-800 font-mono text-xs"></textarea>
+                    <button id="redeem-copy-btn" class="absolute top-8 right-2 bg-gray-100 hover:bg-gray-200 text-gray-600 p-1.5 rounded-md transition-colors" title="Copy Text Body">
                         <i data-lucide="copy" class="w-4 h-4"></i>
                     </button>
                 </div>
             </div>
             
-            <div class="mt-4 pt-4 border-t border-gray-100">
+            <div class="mt-4 pt-4 border-t border-gray-100 shrink-0">
                 <div class="flex justify-end gap-3 mb-2">
                     <button id="redeem-cancel" class="px-4 py-2 text-gray-600 font-medium hover:bg-gray-100 rounded-lg transition-colors text-sm">Cancel</button>
                     <!-- Main Action: GMAIL (Now an A tag for reliability) -->
@@ -367,6 +380,8 @@
         const confirmModal = document.getElementById('confirm-modal');
         const helpModal = document.getElementById('help-modal'); // Help Modal
         
+        const modalCardPreview = document.getElementById('redeem-card-preview'); // New preview container
+        const modalCopyImageBtn = document.getElementById('redeem-copy-image-btn'); // New copy image button
         const modalEmailInput = document.getElementById('redeem-email');
         const modalSenderInput = document.getElementById('redeem-sender'); 
         const modalSubjectInput = document.getElementById('redeem-subject');
@@ -413,7 +428,8 @@
             modalConfirmGmailBtn.addEventListener('click', () => completeRedemption('Gmail'));
             modalConfirmDefaultBtn.addEventListener('click', () => completeRedemption('Mail App'));
             modalCopyBtn.addEventListener('click', copyModalBody);
-            
+            modalCopyImageBtn.addEventListener('click', copyCardImage); // New Event Listener
+
             [modalEmailInput, modalSenderInput, modalSubjectInput, modalBodyInput].forEach(input => {
                 input.addEventListener('input', updateRedeemLinks);
             });
@@ -508,15 +524,66 @@
             currentRedeemIndex = index;
             const coupon = coupons[index];
             const brand = brandConfig[currentBrandId];
+            
+            // 1. Render Card into Preview (Visual)
+            modalCardPreview.innerHTML = generateCardHTML(coupon, index);
+            // Hide the redeem button in the preview to make it look like a static voucher
+            const previewButton = modalCardPreview.querySelector('.redeem-controls');
+            if(previewButton) previewButton.style.display = 'none';
+
+            // 2. Setup Inputs
             modalEmailInput.value = "";
             modalSenderInput.value = "";
             modalSubjectInput.value = `${brand.name} Voucher - ${coupon.currency} ${coupon.amount}`;
-            // Removed Link from bodyText as requested
-            const bodyText = `Here is your ${brand.name} Voucher:\n\nAmount: ${coupon.currency} ${coupon.amount}\nSerial Number: ${coupon.serial}\nValid Until: ${coupon.validity}\n\nRedemption PIN: ${formatPin(coupon.pin)}`;
+            
+            // 3. Generate Structured Text Body (ASCII Art style)
+            const borderLine = "=".repeat(30);
+            const thinLine = "-".repeat(30);
+            const bodyText = `${borderLine}\n   ${brand.name.toUpperCase()} VOUCHER\n${borderLine}\n\nVALUE:  ${coupon.currency} ${coupon.amount}\n\nPIN CODE: ${formatPin(coupon.pin)}\n\n${thinLine}\nSerial: ${coupon.serial}\nValid:  ${coupon.validity}\n${borderLine}`;
+            
             modalBodyInput.value = bodyText;
             updateRedeemLinks();
             modal.classList.remove('hidden');
+            lucide.createIcons(); // Re-render icons in the preview
             setTimeout(() => modalEmailInput.focus(), 50);
+        }
+
+        async function copyCardImage() {
+            try {
+                modalCopyImageBtn.innerHTML = '<i data-lucide="loader" class="w-3 h-3 animate-spin"></i> Generating...';
+                lucide.createIcons();
+                
+                // Use html2canvas on the preview element
+                const canvas = await html2canvas(modalCardPreview, { 
+                    scale: 2, 
+                    backgroundColor: '#ffffff',
+                    logging: false 
+                });
+                
+                canvas.toBlob(blob => {
+                    if (!blob) {
+                         throw new Error("Blob generation failed");
+                    }
+                    const item = new ClipboardItem({ "image/png": blob });
+                    navigator.clipboard.write([item]).then(() => {
+                        modalCopyImageBtn.innerHTML = '<i data-lucide="check" class="w-3 h-3 text-green-600"></i> Copied!';
+                        lucide.createIcons();
+                        showToast("Image copied! Paste it into your email.", "success");
+                        setTimeout(() => {
+                            modalCopyImageBtn.innerHTML = '<i data-lucide="image" class="w-3 h-3"></i> Copy Image to Clipboard';
+                            lucide.createIcons();
+                        }, 3000);
+                    }).catch(err => {
+                        console.error(err);
+                        showToast("Clipboard write failed. Browser may not support it.", "info");
+                        modalCopyImageBtn.innerHTML = 'Failed';
+                    });
+                });
+            } catch (error) {
+                console.error(error);
+                showToast("Failed to generate image.", "info");
+                modalCopyImageBtn.innerHTML = 'Failed';
+            }
         }
 
         function updateRedeemLinks() {
@@ -571,29 +638,29 @@
                     <div class="p-5 flex-1 flex flex-col">
                         <div class="flex-1 flex flex-col-reverse md:flex-row gap-6">
                             
-                            <!-- Left Column: Info & PIN -->
+                            <!-- Left Column: Info & PIN (Stacked Vertically) -->
                             <div class="flex-1 flex flex-col justify-center space-y-4">
-                                <div class="grid grid-cols-2 gap-4">
-                                    <div class="flex items-start gap-3"><i data-lucide="hash" class="w-5 h-5 text-gray-400 mt-0.5"></i><div><p class="text-xs text-gray-500 uppercase font-semibold">Serial Number</p><p class="font-mono text-gray-800 font-medium">${coupon.serial}</p></div></div>
-                                    <div class="flex items-start gap-3"><i data-lucide="calendar" class="w-5 h-5 text-gray-400 mt-0.5"></i><div><p class="text-xs text-gray-500 uppercase font-semibold">Valid Until</p><p class="font-medium text-red-600">${coupon.validity}</p></div></div>
+                                <div class="flex flex-col gap-3">
+                                    <div class="flex items-center gap-3"><i data-lucide="hash" class="w-5 h-5 text-gray-400"></i><div><p class="text-[10px] text-gray-500 uppercase font-semibold leading-tight">Serial Number</p><p class="font-mono text-gray-800 font-medium text-sm">${coupon.serial}</p></div></div>
+                                    <div class="flex items-center gap-3"><i data-lucide="calendar" class="w-5 h-5 text-gray-400"></i><div><p class="text-[10px] text-gray-500 uppercase font-semibold leading-tight">Valid Until</p><p class="font-medium text-red-600 text-sm">${coupon.validity}</p></div></div>
                                 </div>
                                 
-                                <div class="flex items-start gap-3 bg-gray-50 p-3 rounded-lg border border-gray-100">
+                                <div class="flex items-start gap-3 bg-gray-50 p-3 rounded-lg border border-gray-100 mt-2">
                                     <div class="w-5 flex justify-center mt-0.5"><span class="text-lg leading-none">🔐</span></div>
                                     <div class="w-full">
-                                        <p class="text-xs text-gray-500 uppercase font-semibold">Redemption PIN</p>
+                                        <p class="text-[10px] text-gray-500 uppercase font-semibold leading-tight">Redemption PIN</p>
                                         <div class="flex items-center gap-2 mt-1">
-                                            <code class="bg-white border border-gray-200 px-3 py-1 rounded-md text-xl font-bold text-gray-800 tracking-wider shadow-sm">${formatPin(coupon.pin)}</code>
-                                            <button id="btn-copy-${idx}" onclick="copyToClipboard('${formatPin(coupon.pin)}', 'btn-copy-${idx}')" class="text-gray-400 hover:text-gray-800 transition-colors cursor-pointer ml-2" title="Copy PIN"><i data-lucide="copy" class="w-5 h-5"></i></button>
+                                            <code class="bg-white border border-gray-200 px-3 py-1.5 rounded-md text-xl font-bold text-gray-800 tracking-wider shadow-sm w-full text-center md:text-left">${formatPin(coupon.pin)}</code>
+                                            <button id="btn-copy-${idx}" onclick="copyToClipboard('${formatPin(coupon.pin)}', 'btn-copy-${idx}')" class="text-gray-400 hover:text-gray-800 transition-colors cursor-pointer ml-2 shrink-0" title="Copy PIN"><i data-lucide="copy" class="w-5 h-5"></i></button>
                                         </div>
                                     </div>
                                 </div>
                             </div>
 
-                            <!-- Right Column: Value -->
-                            <div class="flex flex-col items-center justify-center md:items-end md:justify-center md:border-l md:border-dashed md:border-gray-200 md:pl-6 min-w-[120px]">
-                                <span class="text-2xl font-bold text-gray-400">${coupon.currency}</span>
-                                <span style="color: ${coupon.redeemed ? '#6b7280' : brand.color}" class="text-6xl font-extrabold transition-colors duration-500 leading-none">${coupon.amount}</span>
+                            <!-- Right Column: Value (Bigger) -->
+                            <div class="flex flex-col items-center justify-center md:items-end md:justify-center md:border-l md:border-dashed md:border-gray-200 md:pl-6 min-w-[140px]">
+                                <span class="text-xl font-bold text-gray-400 mb-[-5px]">${coupon.currency}</span>
+                                <span style="color: ${coupon.redeemed ? '#6b7280' : brand.color}" class="text-8xl font-extrabold transition-colors duration-500 leading-none tracking-tighter">${coupon.amount}</span>
                             </div>
 
                         </div>
